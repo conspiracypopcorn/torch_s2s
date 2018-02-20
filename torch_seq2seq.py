@@ -147,8 +147,8 @@ def train(g):
 
     dec_inputs1 = {
         "slu": slu1,
-        "prev": prev1,
-        "next": next1
+        "prev": torch.cat([h.go_tag(g.use_cuda),prev1], 0),
+        "next": torch.cat([h.go_tag(g.use_cuda), next1], 0)
     }
     scores = model.forward(inp1, dec_inputs1)
     # print("Input: " + h.idxs_to_string(inp1[0], g.enc_idx2word))
@@ -171,14 +171,14 @@ def train(g):
             inp, prev, next, slu = train_batch_generator.get_input_prev_next_slu(g.use_cuda)
             # for the moment dec_inputs == dec targets (just for testing)
             dec_inputs = {
-                "slu": slu,
-                "prev": prev,
-                "next": next
+                "slu": slu,  # this is not used :D
+                "prev": torch.cat([h.go_tag(g.use_cuda), prev], 0),
+                "next": torch.cat([h.go_tag(g.use_cuda), next], 0)
             }
             dec_targets = {
                 "slu": slu.view(-1),
-                "prev": prev.view(-1),
-                "next": next.view(-1)
+                "prev": torch.cat([prev, h.eos_tag(g.use_cuda)], 0).view(-1),
+                "next": torch.cat([next, h.eos_tag(g.use_cuda)], 0).view(-1)
             }
             scores = model.forward(inp, dec_inputs)
             loss = model.loss(scores, dec_targets)

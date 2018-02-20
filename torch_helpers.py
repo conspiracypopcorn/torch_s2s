@@ -105,6 +105,20 @@ def flatten(a):
         np.resize(a,-1)
     return a
 
+def go_tag(use_cuda, batch_size = 1):
+    got = torch.LongTensor(np.full((1,batch_size), GO))
+    if use_cuda:
+        return Variable(got).cuda()
+    else:
+        return Variable(got)
+
+def eos_tag(use_cuda, batch_size = 1):
+    got = torch.LongTensor(np.full((1,batch_size), EOS))
+    if use_cuda:
+        return Variable(got).cuda()
+    else:
+        return Variable(got)
+
 class batch_gen():
 
     def __init__(self, batch_size, input_sequences_list, target_prev_list,target_next_list, slu_data):
