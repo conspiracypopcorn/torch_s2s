@@ -78,6 +78,7 @@ def read_data(file_path, word2idx):
                     else:
                         tokens_idxs.append(word2idx["<unk>"])
                 sequence.append(tokens_idxs)
+        sequences_list.append(sequence)
     return sequences_list
 
 
@@ -187,7 +188,7 @@ class EncoderRNN(nn.Module):
 
     def forward(self, input):
         input_embedded = self.embedding(input).view(len(input), 1, -1)
-        lstm_out, final_state = self.lstm(input_embedded)
+        lstm_out, final_state = self.lstm(input_embedded) # if no init-state is defined it's zero by default
         return lstm_out, final_state
 
 

@@ -118,11 +118,16 @@ class input_data():
         self.seed = FLAGS.seed
         self.quick_test = FLAGS.quick_test
         self.use_cuda = FLAGS.use_cuda and torch.cuda.is_available()
+        self.data_dir = FLAGS.data_dir
 
 
 g = input_data()
 
-torch_seq2seq.train(g)
+
+if FLAGS.s2s_train:
+    torch_seq2seq.train(g)
+if FLAGS.s2s_test:
+    torch_seq2seq.test(g)
 # if not os.path.exists(g.s2s_model_path):
 #     os.makedirs(g.s2s_model_path)
 # start = time()
