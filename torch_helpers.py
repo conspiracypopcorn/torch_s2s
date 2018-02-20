@@ -184,6 +184,7 @@ class EncoderRNN(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_size)
         self.lstm = nn.LSTM(embedding_size, hidden_units)
 
+
     def forward(self, input):
         input_embedded = self.embedding(input).view(len(input), 1, -1)
         lstm_out, final_state = self.lstm(input_embedded)
@@ -201,7 +202,7 @@ class DecoderRnn(nn.Module):
     def forward(self, input, enc_final_state):
         embedded = self.embedding(input).view(len(input), 1, -1)
         lstm_out, final_state = self.lstm(embedded, enc_final_state)
-        return lstm_out
+        return lstm_out, final_state
 
 
 class SluDecoderRnn(nn.Module):
@@ -221,10 +222,12 @@ class SluDecoderRnn(nn.Module):
         return tag_scores
 
 class Seq2SeqModel(nn.Module):
-    def __init__(self, enc_voc_size, enc_emb_size, hidden_units, decoders, dec_emb_size, slu_hidden_units):
+    def __init__(self, enc_voc_size, enc_emb_size, hidden_units, decoders, dec_emb_size,
+                 slu_hidden_units, feed_previous=False):
         # dec dict "name" : voc_size
         super(Seq2SeqModel, self).__init__()
         self.enc = EncoderRNN(enc_voc_size, enc_emb_size, hidden_units)
+        self.feed_previous = feed_previous
         self.decoders = nn.ModuleList()
         self.dec_names = list(decoders.keys()) # need for order
         self.hidden_units = hidden_units
@@ -243,13 +246,43 @@ class Seq2SeqModel(nn.Module):
     def forward(self, enc_input, dec_inputs=None):
         scores = OrderedDict()
         enc_out, enc_final_state = self.enc.forward(enc_input)
+
         for dec, name in zip(self.decoders, self.dec_names):
             if name == "slu":
                 scores[name] = dec.forward(enc_out)
             else:
-                out = dec.forward(dec_inputs[name], enc_final_state).view(-1,self.hidden_units) # [time * bs, hidden]
-                logits = self.linear(out)
-                scores[name] = F.log_softmax(logits, dim=1)
+                if self.feed_previous:
+                    # dec-inputs = [go]
+                    logits_list = []
+                    assert len(dec_inputs[name]) == 1
+
+                    def get_pred(logits): # t*b, voc
+
+                        _, pred = torch.max(logits, dim=1) # t*b
+                        return pred.view(-1, 1)
+
+                    time = 0
+                    out, hidden_state = dec.forward(dec_inputs[name], enc_final_state) # t, b , hid
+                    out_flat = out.view(-1, self.hidden_units)
+                    logits = self.linear(out_flat)
+                    logits_list.append(logits)
+                    pred = get_pred(logits)
+
+                    while (pred != EOS).any() and time < 100:
+                        out, hidden_state = dec.forward(pred, hidden_state)
+                        out_flat = out.view(-1, self.hidden_units)
+                        logits = self.linear(out_flat)
+                        pred = get_pred(logits)
+                        logits_list.append(logits)
+                        time += 1
+
+                    logits = torch.cat(logits_list, 0)
+                    scores[name] = F.log_softmax(logits, dim=1)
+
+                else:
+                    out, _ = dec.forward(dec_inputs[name], enc_final_state) # [time * bs, hidden]
+                    logits = self.linear(out.view(-1,self.hidden_units))
+                    scores[name] = F.log_softmax(logits, dim=1)
         return scores
 
     def loss(self, scores, targets):
