@@ -95,7 +95,8 @@ def train(g):
         dec_emb_size=g.dec_embedding_size,
         slu_hidden_units=g.slu_hidden_units
     )
-
+    for par in model.parameters():
+        par.data.uniform_(-1.0, 1.0)
     if g.use_cuda:
         model = model.cuda()
 
@@ -119,7 +120,7 @@ def train(g):
     scores = model.forward(inp1, dec_inputs1)
     print_predictions(scores, g.dec_idx2word, g.slu_idx2word)
 
-    optimizer = optim.Adagrad(model.parameters(), lr=lr)
+    optimizer = optim.Adagrad(model.parameters(), lr=0.1)
     start = time.time()
 
     dev_loss_track = []
@@ -129,14 +130,13 @@ def train(g):
         max_batch = 10
     else:
         max_epoch = 50
-        max_batch = 3000
 
     for epoch in range(max_epoch):
         epoch_loss = []
         train_batch_generator.shuffle()
-
-        #  while train_batch_generator.elements_available():
-        for _ in range(max_batch):
+        batch = 0
+        while train_batch_generator.elements_available():
+        #for _ in range(max_batch):
             model.zero_grad()
 
             inp, prev, next, slu = train_batch_generator.get_input_prev_next_slu(g.use_cuda)
@@ -155,8 +155,13 @@ def train(g):
             loss = model.loss(scores, dec_targets)
             epoch_loss.append(loss.cpu().data.numpy())
             loss.backward()
-            torch.nn.utils.clip_grad_norm(model.parameters(), 0.25)
+            #aa = list(model.parameters())
+            #a = [x.grad for x in aa]
+            torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
             optimizer.step()
+            batch += 1
+            if g.quick_test and batch > max_batch:
+                break
 
         print("Avg epoch loss: {0:.2f}".format(np.mean(epoch_loss)))
 
@@ -179,6 +184,7 @@ def train(g):
             scores = model.forward(inp, dec_inputs)
             loss = model.loss(scores, dec_targets)
             dev_loss.append(loss.cpu().data.numpy())
+
         avg_dev_loss = np.mean(dev_loss)
         print("Avg Dev Loss: {0:.2f}".format(avg_dev_loss))
         dev_loss_track.append(avg_dev_loss)
@@ -200,6 +206,9 @@ def train(g):
             if lr == g.learning_rate/128:
                 print("Training ended for early stoppin (min lr reached).")
                 break
+        if epoch % 5 == 0 :
+            test(g)
+
 
     print("Execution Time: {}".format(time.time() - start))
     model.feed_previous = True
@@ -272,6 +281,13 @@ def test(g):
                     if line != "":
                         line = re.sub("NO_REPLY", "", line).strip()
                         fo.write(line + "\n")
+
+        output = os.popen(
+            'perl multi-bleu.perl ' + g.s2s_test_path + "next_targ.txt" + " < " + g.s2s_test_path + "next_pred.txt").read()
+        print(output + "\n")
+        with open(g.log_file, "a") as f:
+            f.write(output + "\n")
+
     if g.slu:
         with open(g.data_dir + "test_slu_turns.txt", "r") as fi:
             with open(g.s2s_test_path + "slu_targ.txt", "w") as fo:
@@ -280,21 +296,17 @@ def test(g):
                     line = line.strip()
                     if line != "":
                         fo.write(line + "\n")
+
+        format_for_sclite(g.s2s_test_path + "slu_pred.txt", g.s2s_test_path + "slu_targ.txt", g.s2s_test_path)
+        output = os.popen(
+            'perl word_align.pl ' + g.s2s_test_path + "slu_targ_scl.txt" + " " + g.s2s_test_path + "slu_pred_scl.txt" +
+            " | grep \"TOTAL Percent correct\"").read()
+
+        print(output)
+        with open(g.log_file, "a") as f:
+            f.write(output)
+
     print("time {}".format(time.time() - start))
-
-    format_for_sclite(g.s2s_test_path + "slu_pred.txt", g.s2s_test_path + "slu_targ.txt", g.s2s_test_path)
-    output = os.popen(
-        'perl word_align.pl ' + g.s2s_test_path + "slu_targ_scl.txt" + " " + g.s2s_test_path + "slu_pred_scl.txt" +
-        " | grep \"TOTAL Percent correct\"").read()
-
-    print(output)
-    with open(g.log_file, "a") as f:
-        f.write(output)
-
-    output = os.popen('perl multi-bleu.perl ' + g.s2s_test_path + "next_targ.txt" + " < " + g.s2s_test_path + "next_pred.txt").read()
-    print(output + "\n")
-    with open(g.log_file, "a") as f:
-        f.write(output + "\n")
 
 def turn_embeddings(g):
     decoders = OrderedDict()

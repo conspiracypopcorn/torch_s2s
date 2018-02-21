@@ -288,7 +288,7 @@ class Seq2SeqModel(nn.Module):
 
     def loss(self, scores, targets):
         losses = []
-        for name in targets.keys():
+        for name in self.dec_names:
                 l = self.loss_function(scores[name], targets[name])
                 losses.append(l)
         return torch.mean(torch.cat(losses, 0))

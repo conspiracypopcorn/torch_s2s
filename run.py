@@ -140,6 +140,9 @@ if FLAGS.s2s_train:
 
 if FLAGS.s2s_test:
     torch_seq2seq.test(g)
+
+if FLAGS.dm_train:
+    torch_dm.train(g)
 # if not os.path.exists(g.s2s_model_path):
 #     os.makedirs(g.s2s_model_path)
 # start = time()
