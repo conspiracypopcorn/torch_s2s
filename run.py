@@ -6,6 +6,16 @@ import random
 import numpy as np
 from time import time
 import argparse
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--learning_rate", type=float, default=0.5,
                     help="Learning rate.")
@@ -42,26 +52,26 @@ parser.add_argument("--data_dir", default="new_data/",
                     type=str, help="Data directory.")
 
 parser.add_argument("--prev_t", default=True,
-                    type=bool, help="Set to True to predict previous turn.")
+                    type=str2bool, help="Set to True to predict previous turn.")
 parser.add_argument("--next_t", default=True,
-                    type=bool, help="Set True to predict next turn.")
+                    type=str2bool, help="Set True to predict next turn.")
 parser.add_argument("--slu", default=True,
-                    type=bool, help="Set True to predict slu concept tags.")
+                    type=str2bool, help="Set True to predict slu concept tags.")
 parser.add_argument("--s2s_train", default=True,
-                    type=bool, help="Set to True to train a seq2seq model and compute turn embeddings")
+                    type=str2bool, help="Set to True to train a seq2seq model and compute turn embeddings")
 parser.add_argument("--s2s_test", default=True,
-                    type=bool, help="Set to True to test the s2s model.")
+                    type=str2bool, help="Set to True to test the s2s model.")
 parser.add_argument("--dm_train", default=False,
-                    type=bool, help="Set to True to train a dialogue model.")
+                    type=str2bool, help="Set to True to train a dialogue model.")
 parser.add_argument("--dm_test", default=False,
-                    type=bool, help="Set to True to test a dialogue model.")
+                    type=str2bool, help="Set to True to test a dialogue model.")
 parser.add_argument("--log_file", default="log.txt",type=str,
                     help="File to log all the results.")
-parser.add_argument("--decode", default=False,type=bool,
+parser.add_argument("--decode", default=False,type=str2bool,
                     help="Set True to decode a sentence from stdin.")
 parser.add_argument("--quick_test", default=True,
-                    type=bool, help="Sets max_epochs to 1, in order to test the network quickly.")
-parser.add_argument("--use_cuda", default=True,type=bool,
+                    type=str2bool, help="Sets max_epochs to 1, in order to test the network quickly.")
+parser.add_argument("--use_cuda", default=True,type=str2bool,
                     help="Set true to use cuda if possible.")
 
 FLAGS = parser.parse_args()

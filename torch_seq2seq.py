@@ -36,11 +36,44 @@ def log_predictions(word_scores, test_path, dec_dict=None, slu_dict=None):
         w_s = w_cpu.data.numpy()
         pred = np.argmax(w_s, axis=1)
         if name == "slu":
-            trad = [slu_dict[i] for i in list(pred)]
+            line = [slu_dict[i] for i in list(pred)]
+            line = " ".join(line) +"\n"            
         else:
-            trad = [dec_dict[i] for i in list(pred[:-1])]
-        with open(test_path + name + ".txt", "a") as f:
-            f.write(" ".join(trad) +"\n")
+            line = [dec_dict[i] for i in list(pred[:-1])]
+            line = " ".join(line)
+            line = re.sub("NO_REPLY", "", line).strip()
+
+        with open(test_path + name + "_pred.txt", "a") as f:
+            f.write(line + "\n")
+
+
+def format_for_sclite(pred, targ, s2s_test_path):
+    with open(pred, "r") as f:
+        with open(s2s_test_path + "slu_pred_scl.txt", "w") as sf:
+            id = 0
+            for line in f:
+                fake_id = " (00_{})".format(id)
+                toks = []
+                line = line.split()
+                for tok in line:
+                    if tok != "null" and tok[-2:] == "-B":
+                        tok = tok[:-2]
+                        toks.append(re.sub("\.", "", tok))
+                sf.write(" ".join(toks) + fake_id + "\n")
+                id += 1
+    with open(targ, "r") as f:
+        with open(s2s_test_path + "slu_targ_scl.txt", "w") as sf:
+            id = 0
+            for line in f:
+                fake_id = " (00_{})".format(id)
+                toks = []
+                line = line.split()
+                for tok in line:
+                    if tok != "null" and tok[-2:] == "-B":
+                        tok = tok[:-2]
+                        toks.append(re.sub("\.", "", tok))
+                sf.write(" ".join(toks) + fake_id + "\n")
+                id += 1
 
 def train(g):
     lr = g.learning_rate
@@ -86,12 +119,20 @@ def train(g):
     start = time.time()
 
     dev_loss_track = []
-    for epoch in range(50):
+
+    if g.quick_test:
+        max_epoch = 10
+        max_batch = 10
+    else:
+        max_epoch = 50
+        max_batch = 3000
+
+    for epoch in range(max_epoch):
         epoch_loss = []
         train_batch_generator.reset()
 
         #  while train_batch_generator.elements_available():
-        for _ in range(1000):
+        for _ in range(max_batch):
             model.zero_grad()
 
             inp, prev, next, slu = train_batch_generator.get_input_prev_next_slu(g.use_cuda)
@@ -184,8 +225,10 @@ def test(g):
         slu_hidden_units=g.slu_hidden_units,
         feed_previous=True
     )
-
     model.load_state_dict(torch.load(g.s2s_model_path + "model.s2s"))
+
+    if g.use_cuda:
+        model = model.cuda()
 
     test_batch_generator = h.batch_gen(g.batch_size, g.test_user_data, g.test_prev_system_data,
                                       g.test_next_system_data, g.test_slu_data)
@@ -208,7 +251,7 @@ def test(g):
 
         log_predictions(scores, g.s2s_test_path, g.dec_idx2word, g.slu_idx2word)
 
-    if g.prev_t:
+    if False:
         with open(g.data_dir + "test_prev_system_turns.txt", "r") as fi:
             with open(g.s2s_test_path + "prev_targ.txt", "w") as fo:
                 lines = fi.readlines()
@@ -223,6 +266,7 @@ def test(g):
                 for line in lines:
                     line = line.strip()
                     if line != "":
+                        line = re.sub("NO_REPLY", "", line).strip()
                         fo.write(line + "\n")
     if g.slu:
         with open(g.data_dir + "test_slu_turns.txt", "r") as fi:
@@ -232,6 +276,18 @@ def test(g):
                     line = line.strip()
                     if line != "":
                         fo.write(line + "\n")
-
     print("time {}".format(time.time() - start))
 
+    format_for_sclite(g.s2s_test_path + "slu_pred.txt", g.s2s_test_path + "slu_targ.txt", g.s2s_test_path)
+    output = os.popen(
+        'perl word_align.pl ' + g.s2s_test_path + "slu_targ_scl.txt" + " " + g.s2s_test_path + "slu_pred_scl.txt" +
+        " | grep \"TOTAL Percent correct\"").read()
+
+    print(output)
+    with open(g.log_file, "a") as f:
+        f.write(output)
+
+    output = os.popen('perl multi-bleu.perl ' + g.s2s_test_path + "next_targ.txt" + " < " + g.s2s_test_path + "next_pred.txt").read()
+    print(output + "\n")
+    with open(g.log_file, "a") as f:
+        f.write(output + "\n")

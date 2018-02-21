@@ -5,6 +5,7 @@ import torch
 from torch.autograd import Variable
 from torch.nn import functional as F
 from collections import OrderedDict
+import re
 
 PAD = 0
 GO = 1
@@ -119,6 +120,35 @@ def eos_tag(use_cuda, batch_size = 1):
         return Variable(got).cuda()
     else:
         return Variable(got)
+
+
+def format_for_sclite(pred, targ):
+    with open(pred, "r") as f:
+        with open(g.s2s_test_path + "slu_pred.txt", "w") as sf:
+            id = 0
+            for line in f:
+                fake_id = " (00_{})".format(id)
+                toks = []
+                line = line.split()
+                for tok in line:
+                    if tok != "null" and tok[-2:] == "-B":
+                        tok = tok[:-2]
+                        toks.append(re.sub("\.", "", tok))
+                sf.write(" ".join(toks) + fake_id + "\n")
+                id += 1
+    with open(targ, "r") as f:
+        with open(g.s2s_test_path + "slu_targ.txt", "w") as sf:
+            id = 0
+            for line in f:
+                fake_id = " (00_{})".format(id)
+                toks = []
+                line = line.split()
+                for tok in line:
+                    if tok != "null" and tok[-2:] == "-B":
+                        tok = tok[:-2]
+                        toks.append(re.sub("\.", "", tok))
+                sf.write(" ".join(toks) + fake_id + "\n")
+                id += 1
 
 class batch_gen():
 
