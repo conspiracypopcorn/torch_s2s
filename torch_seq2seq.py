@@ -11,6 +11,8 @@ import time
 from collections import OrderedDict
 import os
 import shutil
+import pickle
+from tqdm import tqdm
 # # dec input -> GO + target
 # # dec target -> target + EOS
 # da fare:
@@ -37,7 +39,7 @@ def log_predictions(word_scores, test_path, dec_dict=None, slu_dict=None):
         pred = np.argmax(w_s, axis=1)
         if name == "slu":
             line = [slu_dict[i] for i in list(pred)]
-            line = " ".join(line) +"\n"            
+            line = " ".join(line).strip()
         else:
             line = [dec_dict[i] for i in list(pred[:-1])]
             line = " ".join(line)
@@ -98,6 +100,8 @@ def train(g):
         model = model.cuda()
 
     print(model)
+    for par in model.parameters():
+        print(par.size())
 
     train_batch_generator = h.batch_gen(g.batch_size, g.train_user_data, g.train_prev_system_data,
                                         g.train_next_system_data, g.train_slu_data)
@@ -129,7 +133,7 @@ def train(g):
 
     for epoch in range(max_epoch):
         epoch_loss = []
-        train_batch_generator.reset()
+        train_batch_generator.shuffle()
 
         #  while train_batch_generator.elements_available():
         for _ in range(max_batch):
@@ -193,7 +197,7 @@ def train(g):
             if (len(dev_loss_track) - np.argmin(dev_loss_track)) > 3:
                 print("Training ended for early stopping (3 consecutive decay).")
                 break
-            if lr < g.learning_rate/256:
+            if lr == g.learning_rate/128:
                 print("Training ended for early stoppin (min lr reached).")
                 break
 
@@ -291,3 +295,69 @@ def test(g):
     print(output + "\n")
     with open(g.log_file, "a") as f:
         f.write(output + "\n")
+
+def turn_embeddings(g):
+    decoders = OrderedDict()
+    if g.slu:
+        decoders["slu"] = g.slu_vocab_size
+    if g.prev_t:
+        decoders["prev"] = g.dec_vocab_size
+    if g.next_t:
+        decoders["next"] = g.dec_vocab_size
+
+    model = h.Seq2SeqModel(
+        enc_voc_size=g.enc_vocab_size,
+        enc_emb_size=g.enc_embedding_size,
+        hidden_units=g.hidden_units,
+        decoders=decoders,
+        dec_emb_size=g.dec_embedding_size,
+        slu_hidden_units=g.slu_hidden_units,
+        feed_previous=True
+    )
+    model.load_state_dict(torch.load(g.s2s_model_path + "model.s2s"))
+
+    if g.use_cuda:
+        model = model.cuda()
+
+
+
+    #encode all the user turns
+
+    def compute_turn_embeddings(data):
+        emb_data = []
+        for sequence in tqdm(data):
+            seq = []
+            for turn in sequence:
+                # turn [time]
+                t_t = torch.LongTensor(turn).view(-1, 1)
+                if g.use_cuda:
+                    t_v = torch.autograd.Variable(t_t).cuda()
+                else:
+                    t_v = torch.autograd.Variable(t_t)
+                _, enc_final_state = model.enc.forward(t_v)
+                enc_final_state = torch.cat([enc_final_state[0], enc_final_state[1]], 2).view(-1)
+                seq.append(enc_final_state.cpu().data.numpy())
+            emb_data.append(seq)
+
+        return emb_data
+
+
+    if not os.path.exists(g.turn_embeddings_path):
+        os.makedirs(g.turn_embeddings_path)
+
+    #save the list embedded_user_data to a file
+    print("Computing training turn embeddings...")
+    train_emb_data = compute_turn_embeddings(g.train_user_data)
+    with open(g.turn_embeddings_path + "train_embedded_user_data.txt", "wb") as fp:
+        pickle.dump(train_emb_data, fp)
+
+    #load development data
+    print("Computing development turn embeddings...")
+    dev_emb_data = compute_turn_embeddings(g.dev_user_data)
+    with open(g.turn_embeddings_path + "dev_embedded_user_data.txt", "wb") as fp:
+        pickle.dump(dev_emb_data, fp)
+
+    test_emb_data = compute_turn_embeddings(g.test_user_data)
+    print("Computing test turn embeddings...")
+    with open(g.turn_embeddings_path + "test_embedded_user_data.txt", "wb") as fp:
+        pickle.dump(test_emb_data,fp)

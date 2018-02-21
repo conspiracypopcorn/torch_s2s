@@ -136,6 +136,8 @@ g = input_data()
 
 if FLAGS.s2s_train:
     torch_seq2seq.train(g)
+    torch_seq2seq.turn_embeddings(g)
+
 if FLAGS.s2s_test:
     torch_seq2seq.test(g)
 # if not os.path.exists(g.s2s_model_path):
