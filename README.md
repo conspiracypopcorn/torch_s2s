@@ -1,2 +1,2 @@
 # torch_s2s
-Only for backup purpose
+Implementation of multi-decoder s2s model with pytorch.\
